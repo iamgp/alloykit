@@ -46,7 +46,7 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 # Create directory structure
 create_directories() {
     log "Creating directory structure..."
-    mkdir -p "$INSTALL_DIR"/{bin,config/{alloy,prometheus,loki,grafana},data/{alloy,prometheus,loki/{chunks,rules},grafana},logs,scripts,run}
+    mkdir -p "$INSTALL_DIR"/{bin,config/{alloy,prometheus,loki,grafana},data/{alloy,prometheus/{wal,chunks_head},loki/{chunks,rules},grafana},logs,scripts,run}
     mkdir -p "$INSTALL_DIR/../downloads"
 }
 
@@ -678,7 +678,119 @@ else
 fi
 EOF
 
-    chmod +x "$INSTALL_DIR/scripts/run-"*.sh
+    # Add log location script
+    cat > "$INSTALL_DIR/scripts/add-log-location.sh" << 'EOF'
+#!/bin/bash
+
+# Script to add a new log location to Alloy configuration
+# Usage: ./add-log-location.sh <log_path> [job_name]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
+CONFIG_FILE="$INSTALL_DIR/config/alloy/config.alloy"
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 <log_path> [job_name]"
+    echo ""
+    echo "Arguments:"
+    echo "  log_path    Path to log file(s) to monitor (can use wildcards)"
+    echo "  job_name    Optional job name (defaults to basename of log path)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 /var/log/nginx/access.log"
+    echo "  $0 /var/log/nginx/*.log nginx"
+    echo "  $0 /var/log/myapp/*.log myapp"
+    exit 1
+}
+
+# Check if at least one argument is provided
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+LOG_PATH="$1"
+JOB_NAME="${2:-$(basename "$LOG_PATH" .log)}"
+
+# Sanitize job name (remove special characters)
+JOB_NAME=$(echo "$JOB_NAME" | tr -cd '[:alnum:]_-' | tr '[:upper:]' '[:lower:]')
+
+# Check if config file exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Alloy config file not found at $CONFIG_FILE"
+    exit 1
+fi
+
+# Generate a unique identifier for this log source
+LOG_ID="${JOB_NAME}_$(date +%s)"
+
+# Check if this log path is already configured
+if grep -q "\"$LOG_PATH\"" "$CONFIG_FILE"; then
+    echo "Warning: Log path '$LOG_PATH' appears to already be configured in $CONFIG_FILE"
+    echo "Please check the configuration manually."
+    exit 1
+fi
+
+# Create backup of existing config
+cp "$CONFIG_FILE" "${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+
+# Generate the new configuration block
+NEW_CONFIG="
+// SECTION: Custom Log - $JOB_NAME
+// Added by add-log-location.sh on $(date)
+
+local.file_match \"$LOG_ID\" {
+  path_targets = [{
+    __address__ = \"localhost\",
+    __path__    = \"$LOG_PATH\",
+    instance    = constants.hostname,
+    job         = \"$JOB_NAME\",
+  }]
+}
+
+loki.source.file \"$LOG_ID\" {
+  targets    = local.file_match.$LOG_ID.targets
+  forward_to = [loki.write.default.receiver]
+}
+"
+
+# Add the new configuration before the final comment
+if grep -q "// Note: Docker-specific sections removed for native installation" "$CONFIG_FILE"; then
+    # Create a temp file with the new config
+    echo "$NEW_CONFIG" > /tmp/alloy_new_config.tmp
+    # Insert before the final comment using a temp file
+    sed -i "/\/\/ Note: Docker-specific sections removed for native installation/r /tmp/alloy_new_config.tmp" "$CONFIG_FILE"
+    rm -f /tmp/alloy_new_config.tmp
+else
+    # Just append to the end
+    echo "$NEW_CONFIG" >> "$CONFIG_FILE"
+fi
+
+echo "✓ Successfully added log location '$LOG_PATH' with job name '$JOB_NAME'"
+echo "✓ Configuration backup saved as: ${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+echo ""
+echo "New configuration added:"
+echo "$NEW_CONFIG"
+echo ""
+
+# Automatically reload the configuration
+echo "🔄 Reloading Alloy configuration..."
+if curl -s -X POST "http://localhost:12345/-/reload" > /dev/null 2>&1; then
+    echo "✅ Configuration reloaded successfully!"
+else
+    echo "⚠️  Failed to reload configuration automatically. Please restart Alloy manually:"
+    echo "  $INSTALL_DIR/scripts/stop-all.sh"
+    echo "  $INSTALL_DIR/scripts/start-all.sh"
+    echo ""
+    echo "Or restart just Alloy:"
+    echo "  pkill -f alloy"
+    echo "  $INSTALL_DIR/scripts/run-alloy.sh"
+fi
+EOF
+
+    chmod +x "$INSTALL_DIR/scripts/run-"*.sh "$INSTALL_DIR/scripts/add-log-location.sh"
 }
 
 # Create management scripts
@@ -887,6 +999,7 @@ main() {
     echo "Stop all:   $INSTALL_DIR/scripts/stop-all.sh"
     echo "Status:     $INSTALL_DIR/scripts/status.sh"
     echo "View logs:  tail -f $INSTALL_DIR/logs/*.log"
+    echo "Add logs:   $INSTALL_DIR/scripts/add-log-location.sh <log_path> [job_name]"
 }
 
 main "$@"
