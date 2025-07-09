@@ -321,8 +321,22 @@ install_prometheus() {
     chmod +x "$INSTALL_DIR/bin/prometheus" "$INSTALL_DIR/bin/promtool"
     rm -rf "$prom_dir" 
     
-    # Copy configuration
-    cp "$INSTALL_DIR/../boilerplates/docker-compose/prometheus/config/prometheus.yaml" "$INSTALL_DIR/config/prometheus/"
+    # Create Prometheus configuration
+    cat > "$INSTALL_DIR/config/prometheus/prometheus.yaml" << 'EOF'
+---
+global:
+  scrape_interval: 15s  # By default, scrape targets every 15 seconds.
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9090']
+EOF
 }
 
 # Install Loki from downloaded file
@@ -344,22 +358,60 @@ install_loki() {
     
     chmod +x "$INSTALL_DIR/bin/loki"
     
-    # Copy and adapt configuration
-    cp "$INSTALL_DIR/../boilerplates/docker-compose/loki/config/config.yaml" "$INSTALL_DIR/config/loki/"
-    # Update paths in config to use relative paths (handle macOS vs Linux sed differences)
-    if [[ "$OS" == "darwin" ]]; then
-        sed -i '' "s|/loki/chunks|./data/loki/chunks|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i '' "s|/loki/rules|./data/loki/rules|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i '' "s|path_prefix: /loki|path_prefix: ./data/loki|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i '' "s|instance_addr: 127.0.0.1|instance_addr: 0.0.0.0|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i '' "s|http_listen_port: 3100|http_listen_port: 3100\n  http_listen_address: 0.0.0.0|g" "$INSTALL_DIR/config/loki/config.yaml"
-    else
-        sed -i "s|/loki/chunks|./data/loki/chunks|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i "s|/loki/rules|./data/loki/rules|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i "s|path_prefix: /loki|path_prefix: ./data/loki|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i "s|instance_addr: 127.0.0.1|instance_addr: 0.0.0.0|g" "$INSTALL_DIR/config/loki/config.yaml"
-        sed -i "s|http_listen_port: 3100|http_listen_port: 3100\n  http_listen_address: 0.0.0.0|g" "$INSTALL_DIR/config/loki/config.yaml"
-    fi
+    # Create Loki configuration
+    cat > "$INSTALL_DIR/config/loki/config.yaml" << 'EOF'
+---
+server:
+  http_listen_port: 3100
+  http_listen_address: 0.0.0.0
+  grpc_listen_port: 9095
+  grpc_listen_address: 0.0.0.0
+  log_level: info
+
+common:
+  path_prefix: ./data/loki
+  storage:
+    filesystem:
+      chunks_directory: ./data/loki/chunks
+      rules_directory: ./data/loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 0.0.0.0
+    kvstore:
+      store: inmemory
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: ./data/loki/tsdb-shipper-active
+    cache_location: ./data/loki/tsdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: filesystem
+  filesystem:
+    directory: ./data/loki/chunks
+
+compactor:
+  working_directory: ./data/loki/compactor
+  shared_store: filesystem
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  allow_structured_metadata: false
+
+chunk_store_config:
+  max_look_back_period: 0s
+
+table_manager:
+  retention_deletes_enabled: false
+  retention_period: 0s
+
+ruler:
+  alertmanager_url: http://localhost:9093
+EOF
 }
 
 # Install Grafana from downloaded file
