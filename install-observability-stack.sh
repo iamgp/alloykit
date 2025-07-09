@@ -46,15 +46,14 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 # Create directory structure
 create_directories() {
     log "Creating directory structure..."
-    mkdir -p "$INSTALL_DIR"/{bin,config/{alloy,prometheus,loki,grafana},data/{alloy,prometheus/{wal,chunks_head},loki/{chunks,rules},grafana},logs,scripts,run}
-    mkdir -p "$INSTALL_DIR/../downloads"
+    mkdir -p "$INSTALL_DIR"/{bin,config/{alloy,prometheus,loki,grafana},data/{alloy,prometheus/{wal,chunks_head},loki/{chunks,rules},grafana},logs,scripts,run,downloads}
 }
 
 # Download function for each component
 download_prometheus() {
     local version_clean="${PROMETHEUS_VERSION#v}"
     local filename="prometheus-${version_clean}.${OS}-${ARCH}.tar.gz"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     local url="https://github.com/prometheus/prometheus/releases/download/${PROMETHEUS_VERSION}/prometheus-${version_clean}.${OS}-${ARCH}.tar.gz"
     
     if [[ -f "$download_path" ]]; then
@@ -67,7 +66,7 @@ download_prometheus() {
 
 download_loki() {
     local filename="loki-${LOKI_VERSION}-${OS}-${ARCH}.zip"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     local url="https://github.com/grafana/loki/releases/download/v${LOKI_VERSION}/loki-${OS}-${ARCH}.zip"
     
     if [[ -f "$download_path" ]]; then
@@ -80,7 +79,7 @@ download_loki() {
 
 download_alloy() {
     local filename="alloy-${ALLOY_VERSION}-${OS}-${ARCH}.zip"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     local url="https://github.com/grafana/alloy/releases/download/${ALLOY_VERSION}/alloy-${OS}-${ARCH}.zip"
     
     if [[ -f "$download_path" ]]; then
@@ -93,7 +92,7 @@ download_alloy() {
 
 download_grafana() {
     local filename="grafana-${GRAFANA_VERSION}.${OS}-${ARCH}.tar.gz"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     local url="https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.${OS}-${ARCH}.tar.gz"
     
     if [[ -f "$download_path" ]]; then
@@ -178,15 +177,15 @@ download_all_components() {
 install_alloy() {
     log "Installing Grafana Alloy ${ALLOY_VERSION}..."
     local filename="alloy-${ALLOY_VERSION}-${OS}-${ARCH}.zip"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     
     log "Extracting Alloy..."
-    if ! unzip -q -o "$download_path" -d "$INSTALL_DIR/../downloads/"; then
+    if ! unzip -q -o "$download_path" -d "$INSTALL_DIR/downloads/"; then
         error "Failed to extract Alloy"
         exit 1
     fi
     
-    if ! mv "$INSTALL_DIR/../downloads/alloy-${OS}-${ARCH}" "$INSTALL_DIR/bin/alloy"; then
+    if ! mv "$INSTALL_DIR/downloads/alloy-${OS}-${ARCH}" "$INSTALL_DIR/bin/alloy"; then
         error "Failed to install Alloy binary"
         exit 1
     fi
@@ -302,15 +301,15 @@ install_prometheus() {
     log "Installing Prometheus ${PROMETHEUS_VERSION}..."
     local version_clean="${PROMETHEUS_VERSION#v}"
     local filename="prometheus-${version_clean}.${OS}-${ARCH}.tar.gz"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     
     log "Extracting Prometheus..."
-    if ! tar -xzf "$download_path" -C "$INSTALL_DIR/../downloads/"; then
+    if ! tar -xzf "$download_path" -C "$INSTALL_DIR/downloads/"; then
         error "Failed to extract Prometheus"
         exit 1
     fi
     
-    local prom_dir="$INSTALL_DIR/../downloads/prometheus-${version_clean}.${OS}-${ARCH}"
+    local prom_dir="$INSTALL_DIR/downloads/prometheus-${version_clean}.${OS}-${ARCH}"
     if [[ ! -d "$prom_dir" ]]; then
         error "Prometheus directory not found after extraction"
         exit 1
@@ -343,15 +342,15 @@ EOF
 install_loki() {
     log "Installing Loki ${LOKI_VERSION}..."
     local filename="loki-${LOKI_VERSION}-${OS}-${ARCH}.zip"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     
     log "Extracting Loki..."
-    if ! unzip -q -o "$download_path" -d "$INSTALL_DIR/../downloads/"; then
+    if ! unzip -q -o "$download_path" -d "$INSTALL_DIR/downloads/"; then
         error "Failed to extract Loki"
         exit 1
     fi
     
-    if ! mv "$INSTALL_DIR/../downloads/loki-${OS}-${ARCH}" "$INSTALL_DIR/bin/loki"; then
+    if ! mv "$INSTALL_DIR/downloads/loki-${OS}-${ARCH}" "$INSTALL_DIR/bin/loki"; then
         error "Failed to install Loki binary"
         exit 1
     fi
@@ -419,20 +418,20 @@ install_grafana() {
     log "Installing Grafana ${GRAFANA_VERSION}..."
     
     local filename="grafana-${GRAFANA_VERSION}.${OS}-${ARCH}.tar.gz"
-    local download_path="$INSTALL_DIR/../downloads/$filename"
+    local download_path="$INSTALL_DIR/downloads/$filename"
     
     log "Extracting Grafana..."
     # Clean up any previous extraction attempts
-    rm -rf "$INSTALL_DIR/../downloads/grafana-"*/ 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/downloads/grafana-"*/ 2>/dev/null || true
     
-    if ! tar -xzf "$download_path" -C "$INSTALL_DIR/../downloads/"; then
+    if ! tar -xzf "$download_path" -C "$INSTALL_DIR/downloads/"; then
         error "Failed to extract Grafana"
         exit 1
     fi
     
     # Find the extracted directory (name varies between versions)
     local grafana_dir=""
-    for dir in "$INSTALL_DIR/../downloads"/grafana-*; do
+    for dir in "$INSTALL_DIR/downloads"/grafana-*; do
         if [[ -d "$dir" ]]; then
             grafana_dir="$dir"
             break
@@ -442,7 +441,7 @@ install_grafana() {
     if [[ -z "$grafana_dir" ]] || [[ ! -d "$grafana_dir" ]]; then
         error "Could not find extracted Grafana directory"
         log "Contents of downloads directory:"
-        ls -la "$INSTALL_DIR/../downloads/" | grep grafana || true
+        ls -la "$INSTALL_DIR/downloads/" | grep grafana || true
         exit 1
     fi
     
@@ -1022,10 +1021,10 @@ main() {
     create_management_scripts
     
     # Clean up any remaining extracted files (but keep downloads)
-    rm -rf "$INSTALL_DIR/../downloads"/prometheus-*/ 2>/dev/null || true
-    rm -rf "$INSTALL_DIR/../downloads"/grafana-*/ 2>/dev/null || true
-    rm -rf "$INSTALL_DIR/../downloads"/alloy-${OS}-${ARCH} 2>/dev/null || true
-    rm -rf "$INSTALL_DIR/../downloads"/loki-${OS}-${ARCH} 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/downloads"/prometheus-*/ 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/downloads"/grafana-*/ 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/downloads"/alloy-${OS}-${ARCH} 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/downloads"/loki-${OS}-${ARCH} 2>/dev/null || true
     
     log "Installation complete!"
     echo
