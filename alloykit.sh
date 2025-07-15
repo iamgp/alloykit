@@ -989,6 +989,49 @@ validate_config() {
     return 0
 }
 
+# Check and setup user namespaces for podman
+setup_user_namespaces() {
+    print_status "Checking user namespace configuration..."
+    
+    local user=$(whoami)
+    local uid=$(id -u)
+    local subuid_exists=false
+    local subgid_exists=false
+    
+    # Check if user has subuid/subgid entries
+    if [ -f /etc/subuid ] && grep -q "^${user}:" /etc/subuid; then
+        subuid_exists=true
+    fi
+    
+    if [ -f /etc/subgid ] && grep -q "^${user}:" /etc/subgid; then
+        subgid_exists=true
+    fi
+    
+    if [ "$subuid_exists" = false ] || [ "$subgid_exists" = false ]; then
+        print_warning "User namespace configuration incomplete"
+        echo "Adding user namespace entries..."
+        
+        # Try to add entries (may require sudo)
+        if command_exists sudo; then
+            if [ "$subuid_exists" = false ]; then
+                echo "${user}:100000:65536" | sudo tee -a /etc/subuid >/dev/null
+            fi
+            if [ "$subgid_exists" = false ]; then
+                echo "${user}:100000:65536" | sudo tee -a /etc/subgid >/dev/null
+            fi
+            print_success "User namespace entries added"
+        else
+            print_error "Cannot configure user namespaces without sudo access"
+            echo "Please ask your administrator to add these lines:"
+            echo "To /etc/subuid: ${user}:100000:65536"
+            echo "To /etc/subgid: ${user}:100000:65536"
+            exit 1
+        fi
+    else
+        print_success "User namespaces properly configured"
+    fi
+}
+
 # Load configuration from file
 load_config() {
     local config_file="$1"
@@ -1202,6 +1245,15 @@ start_containers() {
     
     local network_name="obs-network-${INSTANCE_NAME}"
     
+    # Detect if we need special userns flags for high UIDs
+    local current_uid=$(id -u)
+    local userns_flag=""
+    
+    if [ "$current_uid" -gt 100000 ]; then
+        userns_flag="--user=0:0"
+        print_status "Detected high UID ($current_uid), running containers as root user inside container"
+    fi
+    
     print_status "Starting containers..."
     
     # Start Prometheus
@@ -1209,6 +1261,7 @@ start_containers() {
     podman run -d \
         --name "obs-prometheus-${INSTANCE_NAME}" \
         --replace \
+        $userns_flag \
         --network "$network_name" \
         -p "${PROMETHEUS_PORT}:9090" \
         -v "${PWD}/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
@@ -1229,6 +1282,7 @@ start_containers() {
     podman run -d \
         --name "obs-loki-${INSTANCE_NAME}" \
         --replace \
+        $userns_flag \
         --network "$network_name" \
         -p "${LOKI_PORT}:3100" \
         -v "${PWD}/config/loki.yml:/etc/loki/local-config.yaml:ro" \
@@ -1244,6 +1298,7 @@ start_containers() {
     podman run -d \
         --name "obs-grafana-${INSTANCE_NAME}" \
         --replace \
+        $userns_flag \
         --network "$network_name" \
         -p "${GRAFANA_PORT}:3000" \
         -v "obs_grafana_data_${INSTANCE_NAME}:/var/lib/grafana" \
@@ -1261,6 +1316,7 @@ start_containers() {
     podman run -d \
         --name "obs-alloy-${INSTANCE_NAME}" \
         --replace \
+        $userns_flag \
         --network "$network_name" \
         --privileged \
         -p "${ALLOY_PORT}:12345" \
@@ -2071,6 +2127,9 @@ fi
 
 # Install podman if needed
 install_podman
+
+# Setup user namespaces for podman
+setup_user_namespaces
 
 # Check UV package manager with enhanced error handling
 if ! command_exists uv; then
