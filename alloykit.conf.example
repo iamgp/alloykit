@@ -1,0 +1,42 @@
+# AlloyKit Configuration File Example
+# Copy this file to alloykit.conf and customize as needed
+# Use with: ./alloykit.sh --config alloykit.conf
+
+# Installation directory - where AlloyKit will be installed
+INSTALL_DIR=./alloykit
+
+# Instance name - used in container names and volumes
+# Allows multiple AlloyKit instances on the same system
+INSTANCE_NAME=default
+
+# Port configurations - ensure these don't conflict with other services
+GRAFANA_PORT=3000
+PROMETHEUS_PORT=9090
+LOKI_PORT=3100
+ALLOY_PORT=12345
+
+# Example configurations for different environments:
+
+# Development environment:
+# INSTALL_DIR=./alloykit-dev
+# INSTANCE_NAME=dev
+# GRAFANA_PORT=3001
+# PROMETHEUS_PORT=9091
+# LOKI_PORT=3101
+# ALLOY_PORT=12346
+
+# Production environment:
+# INSTALL_DIR=/opt/alloykit
+# INSTANCE_NAME=prod
+# GRAFANA_PORT=3000
+# PROMETHEUS_PORT=9090
+# LOKI_PORT=3100
+# ALLOY_PORT=12345
+
+# Staging environment:
+# INSTALL_DIR=./alloykit-staging
+# INSTANCE_NAME=staging
+# GRAFANA_PORT=3002
+# PROMETHEUS_PORT=9092
+# LOKI_PORT=3102
+# ALLOY_PORT=12347
