@@ -1862,9 +1862,24 @@ EOF
 }
 EOF
 
-    # Copy main dashboard.json if it exists
+    # Copy and process main dashboard.json if it exists
     if [ -f "../dashboard.json" ]; then
-        cp "../dashboard.json" "config/grafana/dashboards/main-dashboard.json"
+        print_status "Processing dashboard template..."
+        # Create temporary jq script
+        cat > /tmp/process_dashboard.jq << 'EOF'
+del(.__inputs, .__elements) | 
+walk(if type == "string" and . == "${DS_PROMETHEUS}" then "prometheus" else . end)
+EOF
+        # Process dashboard template
+        if command_exists jq; then
+            jq -f /tmp/process_dashboard.jq "../dashboard.json" > "config/grafana/dashboards/main-dashboard.json"
+            rm -f /tmp/process_dashboard.jq
+            print_success "Dashboard template processed with jq"
+        else
+            # Fallback to simple copy
+            cp "../dashboard.json" "config/grafana/dashboards/main-dashboard.json"
+            print_warning "jq not found, dashboard may need manual datasource configuration"
+        fi
     fi
 
     print_success "Configuration files created"
